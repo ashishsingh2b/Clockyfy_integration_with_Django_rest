@@ -1,7 +1,13 @@
 # clockify.py
 import requests
 from django.conf import settings
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import List, Dict, Optional
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 
 class ClockifyService:
     def __init__(self):
@@ -11,6 +17,115 @@ class ClockifyService:
             "X-Api-Key": self.api_key,
             "Content-Type": "application/json"
         }
+
+    ########### New Feature Auth #################
+
+
+        
+    def validate_ids(self, workspace_id: str, project_id: Optional[str] = None, 
+                    task_id: Optional[str] = None) -> bool:
+        """Validate that the provided IDs exist in Clockify"""
+        try:
+            # Validate workspace
+            self.get_workspace_by_id(workspace_id)
+            
+            # Validate project if provided
+            if project_id:
+                self.get_project_by_id(workspace_id, project_id)
+                
+            # Validate task if provided
+            if task_id:
+                self.get_task_by_id(workspace_id, project_id, task_id)
+                
+            return True
+        except requests.exceptions.RequestException:
+            return False
+
+    def get_user_time_report(self, workspace_id: str, user_id: str, 
+                           start_date: datetime, end_date: datetime) -> Dict:
+        """Get time tracking report for a specific user"""
+        url = f"{self.base_url}/workspaces/{workspace_id}/reports/detailed"
+        
+        payload = {
+            "dateRangeStart": start_date.isoformat(),
+            "dateRangeEnd": end_date.isoformat(),
+            "users": {"ids": [user_id]},
+            "detailedFilter": {
+                "page": 1,
+                "pageSize": 50
+            }
+        }
+        
+        response = requests.post(url, json=payload, headers=self.headers)
+        response.raise_for_status()
+        return response.json()
+
+    def get_project_time_report(self, workspace_id: str, project_id: str) -> Dict:
+        """Get time tracking report for a specific project"""
+        url = f"{self.base_url}/workspaces/{workspace_id}/projects/{project_id}/reports/summary"
+        response = requests.get(url, headers=self.headers)
+        response.raise_for_status()
+        return response.json()
+
+    def assign_task(self, workspace_id: str, project_id: str, 
+                   task_id: str, user_ids: List[str]) -> Dict:
+        """Assign a task to specific users"""
+        url = f"{self.base_url}/workspaces/{workspace_id}/projects/{project_id}/tasks/{task_id}"
+        
+        payload = {
+            "assigneeIds": user_ids
+        }
+        
+        response = requests.put(url, json=payload, headers=self.headers)
+        response.raise_for_status()
+        return response.json()
+
+    def get_timer_status(self, workspace_id: str, user_id: str) -> Dict:
+        """Get the current timer status for a user"""
+        url = f"{self.base_url}/workspaces/{workspace_id}/user/{user_id}/time-entries"
+        params = {
+            "in-progress": "true"
+        }
+        
+        response = requests.get(url, headers=self.headers, params=params)
+        response.raise_for_status()
+        return response.json()
+
+    def bulk_create_tasks(self, workspace_id: str, project_id: str, 
+                         tasks: List[Dict]) -> List[Dict]:
+        """Bulk create tasks in a project"""
+        created_tasks = []
+        
+        for task in tasks:
+            try:
+                created_task = self.create_task(
+                    workspace_id, 
+                    project_id, 
+                    task['name'], 
+                    task.get('assignee_ids', [])
+                )
+                created_tasks.append(created_task)
+            except Exception as e:
+                logger.error(f"Error creating task {task['name']}: {str(e)}")
+                
+        return created_tasks
+
+    def add_tags_to_task(self, workspace_id: str, project_id: str, 
+                        task_id: str, tags: List[str]) -> Dict:
+        """Add tags to a task"""
+        url = f"{self.base_url}/workspaces/{workspace_id}/projects/{project_id}/tasks/{task_id}"
+        
+        payload = {
+            "tags": tags
+        }
+        
+        response = requests.put(url, json=payload, headers=self.headers)
+        response.raise_for_status()
+        return response.json()   
+
+
+    ############# Till Task Implementations ###############
+
 
     def get_workspaces(self):
         url = f"{self.base_url}/workspaces"
@@ -117,6 +232,12 @@ class ClockifyService:
         response = requests.get(url, headers=self.headers)
         response.raise_for_status()
         return response.json()
+    
+
+    
+
+
+    
 
 
 
