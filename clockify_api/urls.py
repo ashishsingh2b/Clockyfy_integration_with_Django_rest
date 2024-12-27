@@ -1,7 +1,8 @@
 from django.urls import path
 from .views import (
     WorkspaceView, CreateProjectView, StartTimerView, StopTimerView,
-    CreateTaskView, StartTaskTimerView, StopTaskTimerView, GetProjectTasksView
+    CreateTaskView, StartTaskTimerView, StopTaskTimerView, GetProjectTasksView,UserTimeReportView, ProjectTimeReportView, TaskAssignmentView,
+    TimerStatusView, BulkTaskCreateView
 )
 
 urlpatterns = [
@@ -14,6 +15,11 @@ urlpatterns = [
     path('tasks/stop-timer/', StopTaskTimerView.as_view(), name='stop-task-timer'),
     path('workspaces/<str:workspace_id>/projects/<str:project_id>/tasks/', 
          GetProjectTasksView.as_view(), name='get-project-tasks'),
+    path('users/<str:user_id>/time-report/',UserTimeReportView.as_view(),name='user-time-report'),
+    path('projects/<str:project_id>/time-report/',ProjectTimeReportView.as_view(),name='project-time-report'),
+    path('tasks/<str:task_id>/assign/',TaskAssignmentView.as_view(),name='assign-task'),
+    path('timer/status/', TimerStatusView.as_view(),name='timer-status'),
+    path('tasks/bulk-create/', BulkTaskCreateView.as_view(),name='bulk-create-tasks'),
 ]
 
 

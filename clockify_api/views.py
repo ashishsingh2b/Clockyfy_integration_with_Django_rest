@@ -2,11 +2,152 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from .services.clockify_service import ClockifyService
+from rest_framework.permissions import IsAuthenticated
+from django.contrib.auth.models import User
+from datetime import datetime, timedelta
 import requests
 import logging
 
 logger = logging.getLogger(__name__)
 
+class BaseClockifyView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def __init__(self):
+        super().__init__()
+        self.service = ClockifyService()
+
+    def validate_ids(self, workspace_id, project_id=None, task_id=None):
+        if not self.service.validate_ids(workspace_id, project_id, task_id):
+            raise ValueError("Invalid ID(s) provided")
+
+class UserTimeReportView(BaseClockifyView):
+    def get(self, request, user_id):
+        try:
+            workspace_id = request.query_params.get('workspace_id')
+            if not workspace_id:
+                return Response(
+                    {"error": "workspace_id is required"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Default to last 30 days if dates not provided
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=30)
+            
+            report = self.service.get_user_time_report(
+                workspace_id, user_id, start_date, end_date
+            )
+            
+            return Response(report, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Error fetching user time report: {str(e)}")
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+class ProjectTimeReportView(BaseClockifyView):
+    def get(self, request, project_id):
+        try:
+            workspace_id = request.query_params.get('workspace_id')
+            if not workspace_id:
+                return Response(
+                    {"error": "workspace_id is required"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            self.validate_ids(workspace_id, project_id)
+            
+            report = self.service.get_project_time_report(workspace_id, project_id)
+            return Response(report, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Error fetching project time report: {str(e)}")
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+class TaskAssignmentView(BaseClockifyView):
+    def post(self, request, task_id):
+        try:
+            workspace_id = request.data.get('workspace_id')
+            project_id = request.data.get('project_id')
+            user_ids = request.data.get('user_ids', [])
+
+            if not all([workspace_id, project_id]):
+                return Response(
+                    {"error": "workspace_id and project_id are required"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            self.validate_ids(workspace_id, project_id, task_id)
+            
+            result = self.service.assign_task(
+                workspace_id, project_id, task_id, user_ids
+            )
+            return Response(result, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Error assigning task: {str(e)}")
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+class TimerStatusView(BaseClockifyView):
+    def get(self, request):
+        try:
+            workspace_id = request.query_params.get('workspace_id')
+            user_id = request.user.id  # Assuming user is authenticated
+
+            if not workspace_id:
+                return Response(
+                    {"error": "workspace_id is required"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            status = self.service.get_timer_status(workspace_id, user_id)
+            return Response(status, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Error fetching timer status: {str(e)}")
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+class BulkTaskCreateView(BaseClockifyView):
+    def post(self, request):
+        try:
+            workspace_id = request.data.get('workspace_id')
+            project_id = request.data.get('project_id')
+            tasks = request.data.get('tasks', [])
+
+            if not all([workspace_id, project_id, tasks]):
+                return Response(
+                    {"error": "workspace_id, project_id, and tasks are required"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            self.validate_ids(workspace_id, project_id)
+            
+            created_tasks = self.service.bulk_create_tasks(
+                workspace_id, project_id, tasks
+            )
+            return Response(created_tasks, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            logger.error(f"Error creating tasks in bulk: {str(e)}")
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
+############ Old Features ##################
 class WorkspaceView(APIView):
     def get(self, request):
         try:
